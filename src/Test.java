@@ -10,12 +10,12 @@ public class Test {
         try {
             ds = new DatagramSocket();
             String str = "REMOVE";
-          //  str="REG "+ip+" "+port+" "+username;
-            int len=str.length()+5;
-            str=String.format("%04d", len)+" "+str;
+            //  str="REG "+ip+" "+port+" "+username;
+            int len = str.length() + 5;
+            str = String.format("%04d", len) + " " + str;
             InetAddress ip = null;
             ip = InetAddress.getByName("127.0.0.1");
-            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, 55002);
+            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, 55000);
             ds.send(dp);
         } catch (SocketException e) {
             e.printStackTrace();
@@ -23,7 +23,7 @@ public class Test {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
-        }
+
 
 
     }

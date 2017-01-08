@@ -2,10 +2,7 @@ import com.sun.corba.se.impl.orbutil.concurrent.Mutex;
 
 import java.io.IOException;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.StringTokenizer;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,7 +26,7 @@ public class Node {
     private String ip;
     private String username;
     private BlockingQueue queue = new LinkedBlockingQueue<>();
-    ExecutorService executor = Executors.newFixedThreadPool(5);
+    ExecutorService executor = Executors.newFixedThreadPool(3);
 
     public Node(String ip, int port, String username) {
         this.port = port;
@@ -92,11 +89,11 @@ public class Node {
                     } else if (opr.equals("LEAVE")) {
                         String ip = tokenizer.nextToken();
                         int port = Integer.parseInt(tokenizer.nextToken());
-
-                        for (Neighbour n : neighboursList) {
+                        for (Iterator<Neighbour> iterator = neighboursList.iterator(); iterator.hasNext(); ) {
+                            Neighbour n = iterator.next();
                             if (port == n.getPort() && ip.equals(n.getIp())) {
                                 try {
-                                    neighboursList.remove(n);
+                                    iterator.remove();
                                     sendDataPacket(ip, port, "LEAVEOK 0");
                                 } catch (Exception e) {
                                     sendDataPacket(ip, port, "LEAVEOK 9999");
@@ -191,11 +188,13 @@ public class Node {
     private void leave() {
         sendDataPacket(ip, 55555, "UNREG " + ip + " " + port + " " + username);
 
-        for (Neighbour n : neighboursList) {
-            sendDataPacket(n.getIp(), n.getPort(), "LEAVE " + ip + " " + port);
-            neighboursList.remove(n);
-        }
+        for (Iterator<Neighbour> iterator = neighboursList.iterator(); iterator.hasNext(); ) {
 
+            Neighbour n = iterator.next();
+            sendDataPacket(n.getIp(), n.getPort(), "LEAVE " + ip + " " + port);
+            iterator.remove();
+
+        }
 
     }
 
