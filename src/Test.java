@@ -9,13 +9,13 @@ public class Test {
         DatagramSocket ds = null;
         try {
             ds = new DatagramSocket();
-            String str = "send from test 1";
+            String str = "REMOVE";
           //  str="REG "+ip+" "+port+" "+username;
             int len=str.length()+5;
             str=String.format("%04d", len)+" "+str;
             InetAddress ip = null;
             ip = InetAddress.getByName("127.0.0.1");
-            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, 5079);
+            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, 55002);
             ds.send(dp);
         } catch (SocketException e) {
             e.printStackTrace();

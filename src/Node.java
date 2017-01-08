@@ -1,45 +1,60 @@
+import com.sun.corba.se.impl.orbutil.concurrent.Mutex;
+
 import java.io.IOException;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.StringTokenizer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.*;
 
 /**
  * Created by Shani on 1/6/2017.
  */
 public class Node {
-    ArrayList<Neighbour> neighboursList = new ArrayList<>();
 
-    private String port;
+    private String bootstrapServerIp = "127.0.0.1";
+    private int bootstrapServerPort = 55555;
+
+    List<Neighbour> neighboursList =
+            Collections.synchronizedList(new ArrayList<Neighbour>());
+
+    DatagramSocket socket = null;
+
+    private int port;
     private String ip;
     private String username;
     private BlockingQueue queue = new LinkedBlockingQueue<>();
     ExecutorService executor = Executors.newFixedThreadPool(5);
 
-    public Node(String ip, String port, String username) {
+    public Node(String ip, int port, String username) {
         this.port = port;
         this.ip = ip;
         this.username = username;
+        try {
+            this.socket = new DatagramSocket(port);
+        } catch (SocketException e) {
+            e.printStackTrace();
+        }
     }
 
 
     private Runnable listner = new Runnable() {
         @Override
         public void run() {
-            DatagramSocket sock = null;
             try {
-                sock = new DatagramSocket(Integer.parseInt(port));
                 while (true) {
                     byte[] buffer = new byte[65536];
                     DatagramPacket incoming = new DatagramPacket(buffer, buffer.length);
-                    sock.receive(incoming);
+                    socket.receive(incoming);
 
                     byte[] data = incoming.getData();
                     String st = new String(data, 0, incoming.getLength());
-                    System.out.println(st);
+                    System.out.println("NODE " + username + " Recieved from " + incoming.getPort() + ":" + st);
                     queue.put(st);
                 }
             } catch (SocketException e) {
@@ -58,17 +73,38 @@ public class Node {
             while (true) {
                 try {
                     String str = queue.take().toString();
-                    System.out.println("At Request Handler" + str);
-                    str=str.substring(5);
-                    StringTokenizer tokenizer= new StringTokenizer(str, " ");
-                    String opr=tokenizer.nextToken();
-                    if(opr.equals("JOIN")){
-                        String ip=tokenizer.nextToken();
-                        int port=        Integer.parseInt(tokenizer.nextToken());
-                        Neighbour neighbour=  new Neighbour(ip,port);
-                        neighboursList.add(neighbour);
-                        sendDataPacket(ip,port,"0014 JOIN OK 0");
+                    str = str.substring(5);
+                    StringTokenizer tokenizer = new StringTokenizer(str, " ");
+                    String opr = tokenizer.nextToken();
+                    if (opr.equals("JOIN")) {
+                        String ip = tokenizer.nextToken();
+                        int port = Integer.parseInt(tokenizer.nextToken());
+                        Neighbour neighbour = new Neighbour(ip, port);
+                        try {
+                            neighboursList.add(neighbour);
+                            sendDataPacket(ip, port, "JOINOK 0");
+                        } catch (Exception e) {
+                            sendDataPacket(ip, port, "JOINOK 9999");
+                        }
 
+                    } else if (opr.equals("PRINT")) {
+                        printRoutineTable();
+                    } else if (opr.equals("LEAVE")) {
+                        String ip = tokenizer.nextToken();
+                        int port = Integer.parseInt(tokenizer.nextToken());
+
+                        for (Neighbour n : neighboursList) {
+                            if (port == n.getPort() && ip.equals(n.getIp())) {
+                                try {
+                                    neighboursList.remove(n);
+                                    sendDataPacket(ip, port, "LEAVEOK 0");
+                                } catch (Exception e) {
+                                    sendDataPacket(ip, port, "LEAVEOK 9999");
+                                }
+                            }
+                        }
+                    } else if (opr.equals("REMOVE")) {
+                        leave();
                     }
 
                 } catch (InterruptedException e) {
@@ -78,14 +114,15 @@ public class Node {
         }
     };
 
-    private void sendDataPacket(String ipAdr,int port,String msg){
-        DatagramSocket ds = null;
+    private void sendDataPacket(String ipAdr, int port, String msg) {
+
         try {
-            ds = new DatagramSocket();
-            InetAddress ip = null;
-            ip = InetAddress.getByName(ipAdr);
+            InetAddress ip = InetAddress.getByName(ipAdr);
+            int len = msg.length() + 5;
+            msg = String.format("%04d", len) + " " + msg;
             DatagramPacket dp = new DatagramPacket(msg.getBytes(), msg.length(), ip, port);
-            ds.send(dp);
+            socket.send(dp);
+            System.out.println("NODE " + username + " Sent to port " + port + " : " + msg);
         } catch (SocketException e) {
             e.printStackTrace();
         } catch (UnknownHostException e) {
@@ -95,42 +132,42 @@ public class Node {
         }
 
     }
+
     public void register() {
 
         try {
-            DatagramSocket ds = new DatagramSocket();
-            String str = "0036 REG 129.82.123.45 " + port + " 124d";
-            str = "REG " + ip + " " + port + " " + username;
+
+            String str = "REG " + ip + " " + port + " " + username;
             int len = str.length() + 5;
             str = String.format("%04d", len) + " " + str;
             InetAddress ip = null;
-            ip = InetAddress.getByName("127.0.0.1");
-            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, 55555);
-            ds.send(dp);
+            ip = InetAddress.getByName(bootstrapServerIp);
+            DatagramPacket dp = new DatagramPacket(str.getBytes(), str.length(), ip, bootstrapServerPort);
+            socket.send(dp);
 
             byte[] buf = new byte[1024];
             DatagramPacket reply = new DatagramPacket(buf, 1024);
-            ds.receive(reply);
+            socket.receive(reply);
             String rep = new String(reply.getData(), 0, reply.getLength());
-            System.out.println("Reply : " + rep);
+            System.out.println("Node :" + username + " Reply from Bootstrap server  :" + rep);
 
-            ds.close();
 
             rep = rep.substring(5);
             if (rep.startsWith("REGOK")) {
                 String[] parts = rep.split(" ");
                 int noOfNodes = Integer.parseInt(parts[1]);
-                System.out.println(noOfNodes);
+
                 for (int i = 0; i < noOfNodes; i++) {
 
                     Neighbour neighbour = new Neighbour(parts[2 * i + 2], Integer.parseInt(parts[2 * i + 3]));
                     neighboursList.add(neighbour);
 
                 }
+                join();
             } else {
 
             }
-            System.out.println("dsd");
+
         } catch (UnknownHostException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -139,6 +176,38 @@ public class Node {
 
         executor.execute(listner);
         executor.execute(requestHandler);
+    }
+
+    private void join() {
+        String str = "JOIN " + ip + " " + port;
+
+        for (Neighbour n : neighboursList) {
+
+            sendDataPacket(n.getIp(), n.getPort(), str);
+
+        }
+    }
+
+    private void leave() {
+        sendDataPacket(ip, 55555, "UNREG " + ip + " " + port + " " + username);
+
+        for (Neighbour n : neighboursList) {
+            sendDataPacket(n.getIp(), n.getPort(), "LEAVE " + ip + " " + port);
+            neighboursList.remove(n);
+        }
+
+
+    }
+
+    private void printRoutineTable() {
+        String str = "Routing table of Node " + username + "\n";
+        for (Neighbour n : neighboursList) {
+            str += "IP: " + n.getIp() + " Port: " + n.getPort() + "\n";
+        }
+
+        System.out.println(str);
+
+
     }
 
 }
