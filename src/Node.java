@@ -19,6 +19,7 @@ public class Node {
 
     List<Neighbour> neighboursList =
             Collections.synchronizedList(new ArrayList<Neighbour>());
+    List<String> dataList = null;
 
     DatagramSocket socket = null;
 
@@ -28,10 +29,11 @@ public class Node {
     private BlockingQueue queue = new LinkedBlockingQueue<>();
     ExecutorService executor = Executors.newFixedThreadPool(3);
 
-    public Node(String ip, int port, String username) {
+    public Node(String ip, int port, String username, List<String> dataList) {
         this.port = port;
         this.ip = ip;
         this.username = username;
+        this.dataList = dataList;
         try {
             this.socket = new DatagramSocket(port);
         } catch (SocketException e) {
@@ -51,8 +53,9 @@ public class Node {
 
                     byte[] data = incoming.getData();
                     String st = new String(data, 0, incoming.getLength());
-                    System.out.println("NODE " + username + " Recieved from " + incoming.getPort() + ":" + st);
-                    queue.put(st);
+                    QueueObject qo = new QueueObject(incoming.getAddress().getHostAddress(),incoming.getPort(),st);
+                    System.out.println("NODE " + username + " Recieved from " + incoming.getPort()+ ":" + st);
+                    queue.put(qo);
                 }
             } catch (SocketException e) {
                 e.printStackTrace();
@@ -69,7 +72,8 @@ public class Node {
         public void run() {
             while (true) {
                 try {
-                    String str = queue.take().toString();
+                    QueueObject qo=(QueueObject) queue.take();
+                    String str = qo.getStr();
                     str = str.substring(5);
                     StringTokenizer tokenizer = new StringTokenizer(str, " ");
                     String opr = tokenizer.nextToken();
@@ -102,6 +106,31 @@ public class Node {
                         }
                     } else if (opr.equals("REMOVE")) {
                         leave();
+                    } else if (opr.equals("SER")){
+                        String originIp = tokenizer.nextToken();
+                        String senderIp = qo.getIp();
+                        int originPort = Integer.parseInt(tokenizer.nextToken());
+                        int senderPort = qo.getPort();
+                        String name="";
+
+                        while (tokenizer.hasMoreTokens()){
+                            name=name+tokenizer.nextToken()+" ";
+                        }
+                        name=name.trim();
+                        name=name.replace("\"","");
+                        int ttl = Integer.parseInt(tokenizer.nextToken());
+                        search(name,ttl,originIp,senderIp,originPort,senderPort);
+                    } else if(opr.equals("SEROK")){
+                        System.out.println(str);
+                    } else if(opr.equals("SEARCH")){
+                        String name="";
+
+                        while (tokenizer.hasMoreTokens()){
+                            name=name+tokenizer.nextToken()+" ";
+                        }
+                        name=name.trim();
+                        name=name.replace("\"","");
+                        search(name,0,ip,ip,port,port);
                     }
 
                 } catch (InterruptedException e) {
@@ -118,8 +147,9 @@ public class Node {
             int len = msg.length() + 5;
             msg = String.format("%04d", len) + " " + msg;
             DatagramPacket dp = new DatagramPacket(msg.getBytes(), msg.length(), ip, port);
-            socket.send(dp);
             System.out.println("NODE " + username + " Sent to port " + port + " : " + msg);
+            socket.send(dp);
+
         } catch (SocketException e) {
             e.printStackTrace();
         } catch (UnknownHostException e) {
@@ -194,6 +224,29 @@ public class Node {
             sendDataPacket(n.getIp(), n.getPort(), "LEAVE " + ip + " " + port);
             iterator.remove();
 
+        }
+
+    }
+
+    private void search(String name, int ttl, String originIp, String senderIp, int originPort, int senderPort) {
+        if (dataList.contains(name)) {
+            String str = "SEROK " + 1 + " " + ip + " " + port + " " + ttl + " " + name;
+            sendDataPacket(originIp, originPort, str);
+        }else{
+            if (ttl < 2) {
+                ttl++;
+                String str = "SER " + originIp + " " + originPort + " " + name + " " + ttl;
+
+                for (Neighbour n : neighboursList) {
+                    if(!(n.getIp()==senderIp && n.getPort()==senderPort)){
+                        sendDataPacket(n.getIp(), n.getPort(), str);
+                    }
+                }
+            } else {
+                String str = "SEROK " + 0 + " " + ip + " " + port + " " + ttl + " ";
+
+                sendDataPacket(originIp, originPort, str);
+            }
         }
 
     }

@@ -9,7 +9,7 @@ public class Test {
         DatagramSocket ds = null;
         try {
             ds = new DatagramSocket();
-            String str = "REMOVE";
+            String str = "SEARCH Game of thrones";
             //  str="REG "+ip+" "+port+" "+username;
             int len = str.length() + 5;
             str = String.format("%04d", len) + " " + str;
@@ -23,8 +23,7 @@ public class Test {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
-
-
+        }
 
     }
 }
