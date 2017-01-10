@@ -9,7 +9,7 @@ public class Test {
         DatagramSocket ds = null;
         try {
             ds = new DatagramSocket();
-            String str = "SEARCH Game of thrones";
+            String str = "SEARCH West world";
             //  str="REG "+ip+" "+port+" "+username;
             int len = str.length() + 5;
             str = String.format("%04d", len) + " " + str;

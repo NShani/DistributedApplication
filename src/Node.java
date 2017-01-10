@@ -1,5 +1,3 @@
-import com.sun.corba.se.impl.orbutil.concurrent.Mutex;
-
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
@@ -7,7 +5,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.locks.*;
 
 /**
  * Created by Shani on 1/6/2017.
@@ -118,10 +115,14 @@ public class Node {
                         }
                         name=name.trim();
                         name=name.replace("\"","");
-                        int ttl = Integer.parseInt(tokenizer.nextToken());
+
+                        String ttlstr = name.substring(name.lastIndexOf(" ") + 1);
+                        name= name.substring(0,name.lastIndexOf(" "));
+
+                        int ttl = Integer.parseInt(ttlstr);
                         search(name,ttl,originIp,senderIp,originPort,senderPort);
                     } else if(opr.equals("SEROK")){
-                        System.out.println(str);
+
                     } else if(opr.equals("SEARCH")){
                         String name="";
 
@@ -130,7 +131,7 @@ public class Node {
                         }
                         name=name.trim();
                         name=name.replace("\"","");
-                        search(name,0,ip,ip,port,port);
+                        search(name,Constants.initialTtl,ip,ip,port,port);
                     }
 
                 } catch (InterruptedException e) {
@@ -229,14 +230,30 @@ public class Node {
     }
 
     private void search(String name, int ttl, String originIp, String senderIp, int originPort, int senderPort) {
-        if (dataList.contains(name)) {
-            String str = "SEROK " + 1 + " " + ip + " " + port + " " + ttl + " " + name;
+        String split[] = name.split(" ");
+        List<String> filteredList = new ArrayList<String>(dataList);
+        List<String> namesToRemove = new ArrayList<>();
+        for(String s:split){
+            for(String fileName:filteredList){
+                if(!fileName.contains(s)){
+                    namesToRemove.add(fileName);
+                }
+            }
+            for (String i:namesToRemove){
+                filteredList.remove(i);
+            }
+        }
+        if (filteredList.size()>0) {
+            String str = "SEROK " + filteredList.size() + " " + ip + " " + port + " " + (Constants.initialTtl -ttl) + " ";
+            for(String s:filteredList){
+                s=s.replace(" ","_");
+                str+=s+" ";
+            }
             sendDataPacket(originIp, originPort, str);
         }else{
-            if (ttl < 2) {
-                ttl++;
+            if (ttl > 0) {
+                ttl--;
                 String str = "SER " + originIp + " " + originPort + " " + name + " " + ttl;
-
                 for (Neighbour n : neighboursList) {
                     if(!(n.getIp()==senderIp && n.getPort()==senderPort)){
                         sendDataPacket(n.getIp(), n.getPort(), str);
